@@ -78,22 +78,29 @@ jobs:
       with:
         create-symlink: true
 
-    - name: Setup zram
-      run: |
-        sudo apt install linux-modules-extra-$(uname -r) zram-tools -y
-        sudo modprobe zram
-        sudo sed -i 's/^#PERCENT=50/PERCENT=90/' /etc/default/zramswap
-        sudo sed -i 's/^#PRIORITY=100/PRIORITY=1000/' /etc/default/zramswap
-        sudo systemctl restart zramswap
-        zramctl
-
-    - name: Setup environment
+    - name: Setup environment and swap
       run: |
         export DEBIAN_FRONTEND=noninteractive
-        sudo apt update && sudo apt upgrade -y
-        sudo apt install repo -y
-        git config --global user.name ${{ github.actor }}
-        git config --global user.email ${{ github.actor }}@users.noreply.github.com
+        sudo apt update
+        sudo apt install -y repo zram-tools
+        sudo apt install -y "linux-modules-extra-$(uname -r)" || true
+        if sudo modprobe zram 2>/dev/null; then
+          sudo sed -i 's/^#PERCENT=50/PERCENT=90/' /etc/default/zramswap
+          sudo sed -i 's/^#PRIORITY=100/PRIORITY=1000/' /etc/default/zramswap
+          sudo systemctl restart zramswap
+          zramctl
+        else
+          echo "zram module unavailable on $(uname -r), creating 16G swapfile..."
+          sudo fallocate -l 16G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+        fi
+        swapon --show
+        free -h
+        git config --global user.name "${{ github.actor }}"
+        git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+
 
     - name: Sync source
       run: |
